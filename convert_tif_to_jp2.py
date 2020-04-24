@@ -5,7 +5,7 @@ import subprocess
 import sys
 import time
 
-parser = argparse.ArgumentParser(description='Convert tif to jp2 and add watermart')
+parser = argparse.ArgumentParser(description='Convert tif to jp2 and add watermark')
 parser.add_argument('-i', '--input', required=True, help='Target directory')
 args = parser.parse_args()
 
@@ -79,7 +79,7 @@ def calculate_resample(target):
 def calculate_jp2_rate(target):
     if target['tif_d'] >= 600.0:
         temp_rate = 'jp2:rate=0.02380'  # for ImageMagick 6.x
-        # temp_rate = 'jp2:rate=42' # for ImageMagick 7.x
+        #  temp_rate = 'jp2:rate=42' # for ImageMagick 7.x
     elif target['tif_d'] >= 300.0:
         temp_rate = 'jp2:rate=0.125'
     else:
@@ -91,7 +91,7 @@ def calculate_jp2_rate(target):
 def convert_targets(input):
     target = input
 
-    # ImageMagick command for converting tif to jp2 with resample
+    # ImageMagick command for conversion WITH resample
     cmd_jp2_resample = [
         'convert', '-quiet', target['tif_path'], '-density', str(target['tif_d']), '-resample', '150',
         '-define', 'numrlvls=7', '-define', 'jp2:tilewidth=1024', '-define', 'jp2:tileheight=1024',
@@ -100,7 +100,7 @@ def convert_targets(input):
         '-define', 'jp2:cblkheight=64', '-define', 'jp2:sop', target['jp2_path']
     ]
 
-    # ImageMagick command for converting tif to jp2 without resample
+    # ImageMagick command for conversion WITHOUT resample
     cmd_jp2 = [
         'convert', '-quiet', target['tif_path'], '-density', '150',
         '-define', 'numrlvls=7', '-define', 'jp2:tilewidth=1024', '-define', 'jp2:tileheight=1024',
@@ -163,6 +163,7 @@ def main():
     end_time = time.time()
 
     print([len(targets), round(end_time - start_time)])
+    print('\a\a\a')
 
 
 if __name__ == "__main__":
