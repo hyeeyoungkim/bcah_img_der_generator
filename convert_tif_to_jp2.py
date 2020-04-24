@@ -43,7 +43,7 @@ def characterize_target(input):
     try:
         result = subprocess.check_output(cmd_characterize).decode('utf-8')
     except:
-        logging.error('Characterization failed, %s', target)
+        logging.error('Characterization failed, %s', target['tif_path'])
         pass
     else:
         temp_w, temp_h, temp_d_u = result.strip().split('-')
@@ -56,7 +56,7 @@ def characterize_target(input):
             target['tif_convert'] = True
             target['jp2_rate'] = calculate_jp2_rate(target)
         else:
-            logging.error('Unknown density unit (%s), %s', target['tif_u'], target['tif_path'])
+            logging.error('Unknown density unit, %s, %s', target['tif_u'], target['tif_path'])
 
     return target
 
@@ -70,7 +70,7 @@ def calculate_resample(target):
         if jp2_w >= 500.0 and jp2_h >= 500.0:
             return True
         else:
-            logging.warning('Low jp2 resolution (%sx%s), %s', jp2_w, jp2_h, target['tif_path'])
+            logging.warning('Low jp2 resolution, %sx%s, %s', jp2_w, jp2_h, target['tif_path'])
             return False
     else:
         return False
@@ -83,7 +83,7 @@ def calculate_jp2_rate(target):
     elif target['tif_d'] >= 300.0:
         temp_rate = 'jp2:rate=0.125'
     else:
-        logging.warning('Low tif dpi (%s dpi), %s', target['tif_d'], target['tif_path'])
+        logging.warning('Low tif dpi, %s dpi, %s', target['tif_d'], target['tif_path'])
         temp_rate = 'jp2:rate=0.5'
     return temp_rate
 
