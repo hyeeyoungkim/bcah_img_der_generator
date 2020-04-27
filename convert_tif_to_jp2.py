@@ -18,7 +18,7 @@ def search_targets(src_path):
     targets = []
     for dirpath, dirnames, files in os.walk(os.path.join(src_path, 'PUB')):
         for file in files:
-            if file.endswith(('.tiff', '.tif')):
+            if not file.startswith('._') and file.endswith(('.tiff', '.tif')):
                 target = {
                     'tif_name': file,
                     'tif_path': os.path.join(dirpath, file),
