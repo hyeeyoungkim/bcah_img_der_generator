@@ -16,29 +16,64 @@ def search_targets(src_path):
         sys.exit()
 
     targets = []
+
     for dirpath, dirnames, files in os.walk(os.path.join(src_path, 'PUB')):
         for file in files:
             if not file.startswith('._') and file.endswith(('.tiff', '.tif')):
-                target = {
-                    'tif_name': file,
-                    'tif_path': os.path.join(dirpath, file),
-                    'tif_w': 0, 'tif_h': 0,
-                    'tif_d': 0, 'tif_u': '',
-                    'tif_resample': False, 'tif_convert': False,
-                    'jp2_name': os.path.splitext(file)[0] + '.jp2',
-                    'jp2_path': os.path.join(dirpath, os.path.splitext(file)[0] + '.jp2'),
-                    'jp2_rate': ''
-                }
-                targets.append(target)
+                file_path = os.path.join(dirpath, file)
+                scene_count = count_tif_scene(file_path)
+
+                if scene_count == 1:
+                    target = {
+                        'tif_name': file,
+                        'tif_path': file_path,
+                        # 'tif_weight': 0,
+                        # 'tif_height': 0,
+                        # 'tif_density': 0,
+                        # 'tif_density_unit': '',
+                        # 'tif_resample': False,
+                        # 'tif_convert': False,
+                        'jp2_path': os.path.join(dirpath, os.path.splitext(file)[0] + '.jp2')
+                        # 'jp2_rate': ''
+                    }
+                    targets.append(target)
+                elif scene_count > 1:
+                    logging.warning('Multiple tiff scenes, %s, %s', scene_count, file_path)
+                    for i in range(scene_count):
+                        target = {
+                            'tif_name': os.path.splitext(file)[0] + '-' + str(i) + os.path.splitext(file)[1],
+                            'tif_path': os.path.join(dirpath, file) + '[' + str(i) + ']',
+                            'jp2_path': os.path.join(dirpath, os.path.splitext(file)[0] + '-' + str(i) + '.jp2')
+                        }
+                        targets.append(target)
+                else:
+                    pass
+
     logging.info('Found %s tif file(s) in %s', len(targets), src_path)
+
     return targets
 
 
-def characterize_target(input):
-    target = input
+def count_tif_scene(file_path):
+    # ImageMagick 6.x and 7.x command
+    cmd_count_scene = ['identify', '-quiet', '-format', '%s', file_path]
 
+    try:
+        result = subprocess.check_output(cmd_count_scene).decode('utf-8')
+        scene_count = len(result.strip())
+    except:
+        logging.error('Scene count failed, %s', file_path)
+        scene_count = 0
+        pass
+
+    return scene_count
+
+
+def characterize_target(target):
     # ImageMagick 6.x command
     cmd_characterize = ['identify', '-quiet', '-format', '%w-%h-%x', target['tif_path']]
+    # ImageMagick 7.x command
+    # cmd_characterize = ['identify', '-quiet', '-format', '%w-%h-%x %U', target['tif_path']]
 
     try:
         result = subprocess.check_output(cmd_characterize).decode('utf-8')
@@ -47,26 +82,31 @@ def characterize_target(input):
         pass
     else:
         temp_w, temp_h, temp_d_u = result.strip().split('-')
-        target['tif_w'] = float(temp_w)
-        target['tif_h'] = float(temp_h)
-        target['tif_d'] = float(temp_d_u.split(' ')[0])
-        target['tif_u'] = temp_d_u.split(' ')[1]
-        if target['tif_u'] == 'PixelsPerInch':
-            target['tif_resample'] = calculate_resample(target)
-            target['tif_convert'] = True
-            target['jp2_rate'] = calculate_jp2_rate(target)
+        target.update({
+            'tif_weight': float(temp_w),
+            'tif_height': float(temp_h),
+            'tif_density': round(float(temp_d_u.split(' ')[0])),
+            'tif_density_unit': temp_d_u.split(' ')[1]
+        })
+
+        if target['tif_density_unit'] == 'PixelsPerInch':
+            target.update({
+                'tif_resample': calculate_resample(target),
+                'tif_convert': True,
+                'jp2_rate': calculate_jp2_rate(target)
+            })
         else:
-            logging.error('Unknown density unit, %s, %s', target['tif_u'], target['tif_path'])
+            logging.error('Unknown density unit, %s, %s', target['tif_density_unit'], target['tif_path'])
 
     return target
 
 
 def calculate_resample(target):
-    jp2_d = 150.0
+    JP2_DENSITY = 150.0
 
-    if target['tif_d'] > jp2_d:
-        jp2_w = round(target['tif_w'] * (jp2_d / target['tif_d']))
-        jp2_h = round(target['tif_h'] * (jp2_d / target['tif_d']))
+    if target['tif_density'] > JP2_DENSITY:
+        jp2_w = round(target['tif_weight'] * (JP2_DENSITY / target['tif_density']))
+        jp2_h = round(target['tif_height'] * (JP2_DENSITY / target['tif_density']))
         if jp2_w >= 500.0 and jp2_h >= 500.0:
             return True
         else:
@@ -77,23 +117,22 @@ def calculate_resample(target):
 
 
 def calculate_jp2_rate(target):
-    if target['tif_d'] >= 600.0:
+    if target['tif_density'] >= 600.0:
         temp_rate = 'jp2:rate=0.02380'  # for ImageMagick 6.x
         #  temp_rate = 'jp2:rate=42' # for ImageMagick 7.x
-    elif target['tif_d'] >= 300.0:
+    elif target['tif_density'] >= 300.0:
         temp_rate = 'jp2:rate=0.125'
     else:
-        logging.warning('Low tif dpi, %s dpi, %s', target['tif_d'], target['tif_path'])
+        logging.warning('Low tif dpi, %s dpi, %s', target['tif_density'], target['tif_path'])
         temp_rate = 'jp2:rate=0.5'
+
     return temp_rate
 
 
-def convert_targets(input):
-    target = input
-
+def convert_targets(target):
     # ImageMagick command for conversion WITH resample
     cmd_jp2_resample = [
-        'convert', '-quiet', target['tif_path'], '-density', str(target['tif_d']), '-resample', '150',
+        'convert', '-quiet', target['tif_path'], '-density', str(target['tif_density']), '-resample', '150',
         '-define', 'numrlvls=7', '-define', 'jp2:tilewidth=1024', '-define', 'jp2:tileheight=1024',
         '-define', target['jp2_rate'], '-define', 'jp2:prg=rpcl', '-define', 'jp2:mode=int',
         '-define', 'jp2:prcwidth=16383', '-define', 'jp2:prcheight=16383', '-define', 'jp2:cblkwidth=64',
