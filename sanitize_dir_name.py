@@ -30,8 +30,8 @@ def sanitize_dir_name(dir_list):
         # remove trailing leading space
         dir[2] = dir[2].strip()
 
-        # replace accented characters with its nearest equivalent.
-        dir[2] = unicodedata.normalize('NFKD', dir[2]).encode('utf-8', 'ignore').decode('utf-8')
+        # replace accented characters with its nearest equivalent
+        dir[2] = unicodedata.normalize('NFKD', dir[2]).encode('ascii', 'ignore').decode('utf8')
 
         # replace spaces and invalid characters with underscores
         # CRED: https://github.com/artefactual/archivematica/blob/b6dcfb07a6be5957a5085efd1fecd8462fdc3a91/src/MCPClient
