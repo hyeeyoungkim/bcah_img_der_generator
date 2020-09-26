@@ -108,15 +108,19 @@ def calculate_jp2_watermark(target):
     if target['tif_density'] >= 600.0:
         jp2_density = round((target['tif_density'] / 4))
         # jp2_rate = 'jp2:rate=0.02380'  # for ImageMagick 6.x
-        jp2_rate = 'jp2:rate=42' # for ImageMagick 7.x
+        jp2_rate = 'jp2:rate=42'  # for ImageMagick 7.x
+    elif target['tif_density'] >= 300.0:
+        jp2_density = 150.0
+        # jp2_rate = 'jp2:rate=0.02380'  # for ImageMagick 6.x
+        jp2_rate = 'jp2:rate=42'  # for ImageMagick 7.x
     elif target['tif_density'] >= 150.0:
         jp2_density = 150.0
         # jp2_rate = 'jp2:rate=0.125'  # for ImageMagick 6.x
-        jp2_rate = 'jp2:rate=8' # for ImageMagick 7.x
+        jp2_rate = 'jp2:rate=8'  # for ImageMagick 7.x
     else:
         jp2_density = target['tif_density']
         # jp2_rate = 'jp2:rate=0.50'  # for ImageMagick 6.x
-        jp2_rate = 'jp2:rate=2' # for ImageMagick 7.x
+        jp2_rate = 'jp2:rate=2'  # for ImageMagick 7.x
         logging.warning('Low tif dpi, %s dpi, %s', target['tif_density'], target['tif_path'])
 
     jp2_w = round(target['tif_weight'] * (jp2_density / target['tif_density']))
