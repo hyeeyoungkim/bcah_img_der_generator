@@ -27,14 +27,15 @@ def search_targets(src_path):
                     target = {
                         'tif_name': file,
                         'tif_path': file_path,
+                        'jp2_path': os.path.join(dirpath, os.path.splitext(file)[0] + '.jp2')
                         # 'tif_weight': 0,
                         # 'tif_height': 0,
                         # 'tif_density': 0,
                         # 'tif_density_unit': '',
-                        # 'tif_resample': False,
-                        # 'tif_convert': False,
-                        'jp2_path': os.path.join(dirpath, os.path.splitext(file)[0] + '.jp2')
+                        # 'tif_convert': '',
+                        # 'jp2_density': '',
                         # 'jp2_rate': ''
+                        # 'watermark_min': ''
                     }
                     targets.append(target)
                 elif scene_count > 1:
@@ -71,9 +72,9 @@ def count_tif_scene(file_path):
 
 def characterize_target(target):
     # ImageMagick 6.x command
-    cmd_characterize = ['identify', '-quiet', '-format', '%w-%h-%x', target['tif_path']]
+    # cmd_characterize = ['identify', '-quiet', '-format', '%w-%h-%x', target['tif_path']]
     # ImageMagick 7.x command
-    # cmd_characterize = ['identify', '-quiet', '-format', '%w-%h-%x %U', target['tif_path']]
+    cmd_characterize = ['identify', '-quiet', '-format', '%w-%h-%x %U', target['tif_path']]
 
     try:
         result = subprocess.check_output(cmd_characterize).decode('utf-8')
@@ -90,10 +91,12 @@ def characterize_target(target):
         })
 
         if target['tif_density_unit'] == 'PixelsPerInch':
+            tif_resample_result, jp2_rate_result, watermark_result = calculate_jp2_watermark(target)
             target.update({
-                'tif_resample': calculate_resample(target),
                 'tif_convert': True,
-                'jp2_rate': calculate_jp2_rate(target)
+                'jp2_density': tif_resample_result,
+                'jp2_rate': jp2_rate_result,
+                'watermark_min': watermark_result
             })
         else:
             logging.error('Unknown density unit, %s, %s', target['tif_density_unit'], target['tif_path'])
@@ -101,47 +104,35 @@ def characterize_target(target):
     return target
 
 
-def calculate_resample(target):
-    JP2_DENSITY = 150.0
-
-    if target['tif_density'] > JP2_DENSITY:
-        jp2_w = round(target['tif_weight'] * (JP2_DENSITY / target['tif_density']))
-        jp2_h = round(target['tif_height'] * (JP2_DENSITY / target['tif_density']))
-        if jp2_w >= 500.0 and jp2_h >= 500.0:
-            return True
-        else:
-            logging.warning('Low jp2 resolution, %sx%s, %s', jp2_w, jp2_h, target['tif_path'])
-            return False
-    else:
-        return False
-
-
-def calculate_jp2_rate(target):
+def calculate_jp2_watermark(target):
     if target['tif_density'] >= 600.0:
-        temp_rate = 'jp2:rate=0.02380'  # for ImageMagick 6.x
-        #  temp_rate = 'jp2:rate=42' # for ImageMagick 7.x
-    elif target['tif_density'] >= 300.0:
-        temp_rate = 'jp2:rate=0.125'
+        jp2_density = round((target['tif_density'] / 4))
+        # jp2_rate = 'jp2:rate=0.02380'  # for ImageMagick 6.x
+        jp2_rate = 'jp2:rate=42' # for ImageMagick 7.x
+    elif target['tif_density'] >= 150.0:
+        jp2_density = 150.0
+        # jp2_rate = 'jp2:rate=0.125'  # for ImageMagick 6.x
+        jp2_rate = 'jp2:rate=8' # for ImageMagick 7.x
     else:
+        jp2_density = target['tif_density']
+        # jp2_rate = 'jp2:rate=0.50'  # for ImageMagick 6.x
+        jp2_rate = 'jp2:rate=2' # for ImageMagick 7.x
         logging.warning('Low tif dpi, %s dpi, %s', target['tif_density'], target['tif_path'])
-        temp_rate = 'jp2:rate=0.5'
 
-    return temp_rate
+    jp2_w = round(target['tif_weight'] * (jp2_density / target['tif_density']))
+    jp2_h = round(target['tif_height'] * (jp2_density / target['tif_density']))
+    if max(jp2_w, jp2_h) < 480.0:
+        logging.warning('Low jp2 resolution, %sx%s, %s', jp2_w, jp2_h, target['tif_path'])
+    watermark_min = str(min(jp2_w, jp2_h)) + 'x' + str(min(jp2_w, jp2_h))
+
+    return jp2_density, jp2_rate, watermark_min
 
 
 def convert_targets(target):
-    # ImageMagick command for conversion WITH resample
-    cmd_jp2_resample = [
-        'convert', '-quiet', target['tif_path'], '-density', str(target['tif_density']), '-resample', '150',
-        '-define', 'numrlvls=7', '-define', 'jp2:tilewidth=1024', '-define', 'jp2:tileheight=1024',
-        '-define', target['jp2_rate'], '-define', 'jp2:prg=rpcl', '-define', 'jp2:mode=int',
-        '-define', 'jp2:prcwidth=16383', '-define', 'jp2:prcheight=16383', '-define', 'jp2:cblkwidth=64',
-        '-define', 'jp2:cblkheight=64', '-define', 'jp2:sop', target['jp2_path']
-    ]
-
-    # ImageMagick command for conversion WITHOUT resample
+    # ImageMagick command for conversion
     cmd_jp2 = [
-        'convert', '-quiet', target['tif_path'], '-density', '150',
+        'convert', '-quiet', target['tif_path'],
+        '-density', str(target['tif_density']), '-resample', str(target['jp2_density']),
         '-define', 'numrlvls=7', '-define', 'jp2:tilewidth=1024', '-define', 'jp2:tileheight=1024',
         '-define', target['jp2_rate'], '-define', 'jp2:prg=rpcl', '-define', 'jp2:mode=int',
         '-define', 'jp2:prcwidth=16383', '-define', 'jp2:prcheight=16383', '-define', 'jp2:cblkwidth=64',
@@ -149,17 +140,19 @@ def convert_targets(target):
     ]
 
     # ImageMagick command for watermarking
-    cmd_watermark = [
-        'convert', '-quiet', target['jp2_path'], 'WM_20200311.png', '-gravity', 'center', '-compose', 'over',
+    cmd_watermark_a = [
+        'convert', '-quiet', '-background', 'none', '-resize', target['watermark_min'],
+        'WM_20200311.png', 'WM_20200311_temp.png'
+    ]
+    cmd_watermark_b = [
+        'convert', '-quiet', target['jp2_path'], 'WM_20200311_temp.png', '-gravity', 'center',
         '-composite', target['jp2_path']
     ]
 
     try:
-        if target['tif_resample'] is True:
-            subprocess.call(cmd_jp2_resample)
-        else:
-            subprocess.call(cmd_jp2)
-        subprocess.call(cmd_watermark)
+        subprocess.call(cmd_jp2)
+        subprocess.call(cmd_watermark_a)
+        subprocess.call(cmd_watermark_b)
     except:
         logging.error('Converting failed, %s', target['tif_path'])
         pass
@@ -205,5 +198,5 @@ def main():
     print('\a\a\a')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
