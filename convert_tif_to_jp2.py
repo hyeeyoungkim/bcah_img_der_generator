@@ -27,7 +27,7 @@ def search_targets(src_path):
                     target = {
                         'tif_name': file,
                         'tif_path': file_path,
-                        'jp2_path': os.path.join(dirpath, os.path.splitext(file)[0] + '.jp2')
+                        'jp2_path': os.path.join(dirpath, os.path.splitext(file)[0].replace('_pub', '') + '.jp2')
                         # 'tif_weight': 0,
                         # 'tif_height': 0,
                         # 'tif_density': 0,
