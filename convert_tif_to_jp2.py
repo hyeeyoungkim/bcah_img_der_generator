@@ -132,8 +132,6 @@ def calculate_jp2_watermark(target):
         logging.warning('Low jp2 resolution, %sx%s, %s', jp2_w, jp2_h, target['tif_path'])
         print('>>> Generating %sx%s jp2', target['tif_width'], target['tif_height'])
         jp2_density = target['tif_density']
-        # jp2_rate = 'jp2:rate=0.02380'  # for ImageMagick 6.x
-        jp2_rate = 'jp2:rate=42'  # for ImageMagick 7.x
         watermark_m = str(min(target['tif_width'], target['tif_height']))
         watermark_min = watermark_m + 'x' + watermark_m
 
@@ -197,11 +195,13 @@ def main():
     start_time = time.time()
     targets = search_targets(args.input)
 
+    target_count = 1
     for target in targets:
-        logging.info('Converting %s', target['tif_name'])
+        logging.info('Converting %s (%s/%s)', target['tif_name'], target_count,len(targets))
         target = characterize_target(target)
         if target['tif_convert'] is True:
             convert_targets(target)
+        target_count = target_count + 1
 
     verify_jp2_counts(args.input, targets)
     end_time = time.time()
