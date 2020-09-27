@@ -28,7 +28,7 @@ def search_targets(src_path):
                         'tif_name': file,
                         'tif_path': file_path,
                         'jp2_path': os.path.join(dirpath, os.path.splitext(file)[0].replace('_pub', '') + '.jp2')
-                        # 'tif_weight': 0,
+                        # 'tif_width': 0,
                         # 'tif_height': 0,
                         # 'tif_density': 0,
                         # 'tif_density_unit': '',
@@ -84,7 +84,7 @@ def characterize_target(target):
     else:
         temp_w, temp_h, temp_d_u = result.strip().split('-')
         target.update({
-            'tif_weight': float(temp_w),
+            'tif_width': float(temp_w),
             'tif_height': float(temp_h),
             'tif_density': round(float(temp_d_u.split(' ')[0])),
             'tif_density_unit': temp_d_u.split(' ')[1]
@@ -123,11 +123,19 @@ def calculate_jp2_watermark(target):
         jp2_rate = 'jp2:rate=2'  # for ImageMagick 7.x
         logging.warning('Low tif dpi, %s dpi, %s', target['tif_density'], target['tif_path'])
 
-    jp2_w = round(target['tif_weight'] * (jp2_density / target['tif_density']))
+    jp2_w = round(target['tif_width'] * (jp2_density / target['tif_density']))
     jp2_h = round(target['tif_height'] * (jp2_density / target['tif_density']))
+    watermark_m = str(min(jp2_w, jp2_h))
+    watermark_min = watermark_m + 'x' + watermark_m
+
     if max(jp2_w, jp2_h) < 480.0:
         logging.warning('Low jp2 resolution, %sx%s, %s', jp2_w, jp2_h, target['tif_path'])
-    watermark_min = str(min(jp2_w, jp2_h)) + 'x' + str(min(jp2_w, jp2_h))
+        print('>>> Generating %sx%s jp2', target['tif_width'], target['tif_height'])
+        jp2_density = target['tif_density']
+        # jp2_rate = 'jp2:rate=0.02380'  # for ImageMagick 6.x
+        jp2_rate = 'jp2:rate=42'  # for ImageMagick 7.x
+        watermark_m = str(min(target['tif_width'], target['tif_height']))
+        watermark_min = watermark_m + 'x' + watermark_m
 
     return jp2_density, jp2_rate, watermark_min
 
