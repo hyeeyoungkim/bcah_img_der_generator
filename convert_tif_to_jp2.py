@@ -1,187 +1,232 @@
 import argparse
 import logging
 import os
-import subprocess
 import sys
 import time
 
+from PIL import Image, ImageSequence, UnidentifiedImageError
+
 parser = argparse.ArgumentParser(description='Convert tif to jp2 and add watermark')
-parser.add_argument('-i', '--input', required=True, help='Target directory')
+parser.add_argument('path', help='Path to collection directory')
+parser.add_argument('-t', '--type', choices=['pub', 'arch', 'any', 'csv'], required=True, help='Type')
 args = parser.parse_args()
 
 
-def search_targets(src_path):
-    if not os.path.exists(os.path.join(src_path, 'PUB')):
-        logging.error('PUB directory not found')
-        sys.exit()
-
+def search_and_convert_targets(src_path, src_type):
     targets = []
 
-    for dirpath, dirnames, files in os.walk(os.path.join(src_path, 'PUB')):
-        for file in files:
-            if not file.startswith('._') and file.lower().endswith(('.tiff', '.tif')):
-                file_path = os.path.join(dirpath, file)
-                scene_count = count_tif_scene(file_path)
+    # Validating directory path
+    if src_type == 'pub':
+        if not os.path.exists(os.path.join(src_path, 'PUB')):
+            logging.error('Directory not found, , %s', os.path.join(src_path, 'PUB'))
+            sys.exit()
+        else:
+            target_path = os.path.join(src_path, 'PUB')
+    elif src_type == 'arch':
+        if not os.path.exists(os.path.join(src_path, 'ARCH')):
+            logging.error('Directory not found, , %s', os.path.join(src_path, 'ARCH'))
+            sys.exit()
+        else:
+            target_path = os.path.join(src_path, 'ARCH')
+    elif src_type == 'any':
+        if not os.path.exists(os.path.join(src_path)):
+            logging.error('Directory not found, ,%s', os.path.join(src_path))
+            sys.exit()
+        else:
+            target_path = os.path.join(src_path)
+    else: # src_type == 'csv'
+        sys.exit()
 
-                if scene_count == 1:
+    # Validating watermark
+    if not os.path.exists(os.path.join('WM_20200311.png')):
+        logging.error('Watermark not found, , %s', os.path.join('WM_20200311.png'))
+        sys.exit()
+    else:
+        try:
+            wm = Image.open('WM_20200311.png')
+        except UnidentifiedImageError:
+            logging.error('Watermark cannot be opened, , %s', os.path.join(src_path))
+            sys.exit()
+
+    # Parsing tif file paths:
+    if src_type != 'csv':
+        for root, dirs, files in os.walk(os.path.join(target_path)):
+            for file in files:
+                if not file.startswith('._') and file.lower().endswith(('.tiff', '.tif')):
                     target = {
                         'tif_name': file,
-                        'tif_path': file_path,
-                        'jp2_path': os.path.join(dirpath, os.path.splitext(file)[0].replace('_pub', '') + '.jp2')
-                        # 'tif_width': 0,
-                        # 'tif_height': 0,
-                        # 'tif_density': 0,
-                        # 'tif_density_unit': '',
-                        # 'tif_convert': '',
-                        # 'jp2_density': '',
-                        # 'jp2_rate': ''
-                        # 'watermark_min': ''
+                        'tif_path': os.path.join(root, file),
+                        'jp2_path': os.path.join(root, os.path.splitext(file)[0].replace('_pub', '') + '.jp2')
+                        # 'tif_width': '',
+                        # 'tif_height': '',
+                        # 'tif_mode': '',
+                        # 'tif_dpi': '',
+                        # 'tif_scene_index': '',
+                        # 'jp2_resize': '',
+                        # 'watermark_resize': '',
+                        # 'watermark_position': ''
                     }
                     targets.append(target)
-                elif scene_count > 1:
-                    logging.warning('Multiple tiff scenes, %s, %s', scene_count, file_path)
-                    for i in range(scene_count):
-                        target = {
-                            'tif_name': os.path.splitext(file)[0] + '-' + str(i) + os.path.splitext(file)[1],
-                            'tif_path': os.path.join(dirpath, file) + '[' + str(i) + ']',
-                            'jp2_path': os.path.join(dirpath, os.path.splitext(file)[0] + '-' + str(i) + '.jp2')
-                        }
-                        targets.append(target)
-                else:
-                    pass
+    else: # src_type == 'csv'
+        sys.exit()
 
-    logging.info('Found %s tif file(s) in %s', len(targets), src_path)
+    logging.info('Found %s tif file(s) in %s', len(targets), target_path)
+    print()
 
-    return targets
+    # Characterizing tif files
+    tif_total = len(targets)
+    tif_counter = 1
+    jp2_counter = 0
 
-
-def count_tif_scene(file_path):
-    # ImageMagick 6.x and 7.x command
-    cmd_count_scene = ['identify', '-quiet', '-format', '%s', file_path]
-
-    try:
-        result = subprocess.check_output(cmd_count_scene).decode('utf-8')
-        scene_count = len(result.strip())
-    except:
-        logging.error('Scene count failed, %s', file_path)
-        scene_count = 0
-        pass
-
-    return scene_count
-
-
-def characterize_target(target):
-    # ImageMagick 6.x command
-    # cmd_characterize = ['identify', '-quiet', '-format', '%w-%h-%x', target['tif_path']]
-    # ImageMagick 7.x command
-    cmd_characterize = ['identify', '-quiet', '-format', '%w-%h-%x %U', target['tif_path']]
-
-    try:
-        result = subprocess.check_output(cmd_characterize).decode('utf-8')
-    except:
-        logging.error('Characterization failed, %s', target['tif_path'])
-        pass
-    else:
-        temp_w, temp_h, temp_d_u = result.strip().split('-')
-        target.update({
-            'tif_width': float(temp_w),
-            'tif_height': float(temp_h),
-            'tif_density': round(float(temp_d_u.split(' ')[0])),
-            'tif_density_unit': temp_d_u.split(' ')[1]
-        })
-
-        if target['tif_density_unit'] == 'PixelsPerInch':
-            tif_resample_result, jp2_rate_result, watermark_result = calculate_jp2_watermark(target)
-            target.update({
-                'tif_convert': True,
-                'jp2_density': tif_resample_result,
-                'jp2_rate': jp2_rate_result,
-                'watermark_min': watermark_result
-            })
+    for target in targets:
+        try:
+            im = Image.open(target['tif_path'])
+        except FileNotFoundError:
+            logging.error('File not found, , %s', target['tif_path'])
+            pass
+        except UnidentifiedImageError:
+            logging.error('File cannot be opened, , %s', target['tif_path'])
+            pass
+        except:
+            logging.error('Unknown error, , %s', target['tif_path'])
+            pass
         else:
-            logging.error('Unknown density unit, %s, %s', target['tif_density_unit'], target['tif_path'])
+            target.update({
+                'tif_width': float(im.width),
+                'tif_height': float(im.height),
+                'tif_dpi': check_tif_dpi(im, target),
+                'tif_scene_index': check_tif_scene(im, target)
+            })
 
-    return target
+            if target['tif_scene_index'] is not False:
+                jp2_resize, watermark_resize, watermark_position = calculate_jp2_watermark(target)
+                target.update({
+                    'tif_mode_convert': check_tif_mode_convert(im, target),
+                    'jp2_resize': jp2_resize,
+                    'watermark_resize': watermark_resize,
+                    'watermark_position': watermark_position
+                })
+
+                # Converting tif file
+                logging.info('Converting %s (%s/%s)', target['tif_name'], tif_counter, tif_total)
+                jp2_counter = convert_target(im, wm, target, jp2_counter)
+                tif_counter = tif_counter + 1
+                im.close()
+
+    print()
+    logging.info('Converted %s jp2 file(s) from %s tif file(s) in %s', jp2_counter, tif_total, target_path)
+
+
+def check_tif_dpi(im, target):
+    dpi = im.info['dpi']
+    if dpi[0] == dpi[1]:
+        return float(dpi[0])
+    else:
+        logging.warning('Irregular dpi tif, %sx%s dpi, %s', dpi[0], dpi[1], target['tif_path'])
+        return False
+
+
+def check_tif_scene(im, target):
+    scene_count = im.n_frames
+    if scene_count == 1:
+        return 0
+    elif scene_count > 1:
+        scenes = {}
+        scene_index = 0
+        for scene in ImageSequence.Iterator(im):
+            scene_size = sum(list(scene.size))
+            scenes.update({scene_index: scene_size})
+            scene_index += 1
+        logging.warning('Multiple scene tif, %s, %s', scene_count, target['tif_path'])
+        return max(scenes, key=scenes.get)
+    else:
+        logging.error('Irregular scene tif, %s, %s', scene_count, target['tif_path'])
+        return False
+
+
+def check_tif_mode_convert(im, target):
+    # https://pillow.readthedocs.io/en/latest/handbook/image-file-formats.html?highlight=jpeg%202000#jpeg-2000
+    # https://pillow.readthedocs.io/en/stable/handbook/concepts.html#modes
+    if im.mode not in ['L', 'LA', 'RGB', 'RGBA']:
+        logging.warning('Unsupported mode tif, %s, %s', im.mode, target['tif_path'])
+        return True
+    else:
+        return False
 
 
 def calculate_jp2_watermark(target):
-    if target['tif_density'] >= 600.0:
-        jp2_density = round((target['tif_density'] / 4))
-        # jp2_rate = 'jp2:rate=0.02380'  # for ImageMagick 6.x
-        jp2_rate = 'jp2:rate=42'  # for ImageMagick 7.x
-    elif target['tif_density'] >= 300.0:
-        jp2_density = 150.0
-        # jp2_rate = 'jp2:rate=0.02380'  # for ImageMagick 6.x
-        jp2_rate = 'jp2:rate=42'  # for ImageMagick 7.x
-    elif target['tif_density'] >= 150.0:
-        jp2_density = 150.0
-        # jp2_rate = 'jp2:rate=0.125'  # for ImageMagick 6.x
-        jp2_rate = 'jp2:rate=8'  # for ImageMagick 7.x
+    # Calculating jp2_dpi
+    if target['tif_dpi'] is not False:
+        if target['tif_dpi'] >= 600.0:
+            jp2_dpi = round((target['tif_dpi'] / 4))
+        elif target['tif_dpi'] >= 150.0:
+            jp2_dpi = 150.0
+        else:
+            jp2_dpi = target['tif_dpi']
+            logging.warning('Low dpi tif, %s dpi, %s', target['tif_dpi'], target['tif_path'])
+            logging.info('Generating %sx%s jp2 for %s', target['tif_width'], target['tif_height'], target['tif_name'])
+        # Calculating jp2_resize
+        jp2_w = round(target['tif_width'] * (jp2_dpi / target['tif_dpi']))
+        jp2_h = round(target['tif_height'] * (jp2_dpi / target['tif_dpi']))
     else:
-        jp2_density = target['tif_density']
-        # jp2_rate = 'jp2:rate=0.50'  # for ImageMagick 6.x
-        jp2_rate = 'jp2:rate=2'  # for ImageMagick 7.x
-        logging.warning('Low tif dpi, %s dpi, %s', target['tif_density'], target['tif_path'])
+        logging.info('Generating %sx%s jp2 for %s', target['tif_width'], target['tif_height'], target['tif_name'])
+        jp2_w = target['tif_width']
+        jp2_h = target['tif_height']
 
-    jp2_w = round(target['tif_width'] * (jp2_density / target['tif_density']))
-    jp2_h = round(target['tif_height'] * (jp2_density / target['tif_density']))
-    watermark_m = str(min(jp2_w, jp2_h))
-    watermark_min = watermark_m + 'x' + watermark_m
+    # Calculating watermark_resize and watermark_position
+    # Flagging jp2 files with low resolution to exclude from resize
+    if max(jp2_w, jp2_h) > 480.0:
+        jp2_resize = (jp2_w, jp2_h)
+        watermark_m = round(min(jp2_w, jp2_h))
+        watermark_resize = (watermark_m, watermark_m)
+        watermark_position = (round((jp2_w - watermark_m) // 2), round((jp2_h - watermark_m) // 2))
+    else:
+        jp2_resize = False
+        watermark_m = round(min(target['tif_width'], target['tif_height']))
+        watermark_resize = (watermark_m, watermark_m)
+        watermark_position = (
+            round((target['tif_width'] - watermark_m) // 2), round((target['tif_height'] - watermark_m) // 2)
+        )
+        logging.warning('Low resolution jp2, %sx%s, %s', jp2_w, jp2_h, target['tif_path'])
+        logging.info('Generating %sx%s jp2 for %s', target['tif_width'], target['tif_height'], target['tif_name'])
 
-    if max(jp2_w, jp2_h) < 480.0:
-        logging.warning('Low jp2 resolution, %sx%s, %s', jp2_w, jp2_h, target['tif_path'])
-        print('>>> Generating %sx%s jp2', target['tif_width'], target['tif_height'])
-        jp2_density = target['tif_density']
-        watermark_m = str(min(target['tif_width'], target['tif_height']))
-        watermark_min = watermark_m + 'x' + watermark_m
-
-    return jp2_density, jp2_rate, watermark_min
+    return jp2_resize, watermark_resize, watermark_position
 
 
-def convert_targets(target):
-    # ImageMagick command for conversion
-    cmd_jp2 = [
-        'convert', '-quiet', target['tif_path'],
-        '-density', str(target['tif_density']), '-resample', str(target['jp2_density']),
-        '-define', 'numrlvls=7', '-define', 'jp2:tilewidth=1024', '-define', 'jp2:tileheight=1024',
-        '-define', target['jp2_rate'], '-define', 'jp2:prg=rpcl', '-define', 'jp2:mode=int',
-        '-define', 'jp2:prcwidth=16383', '-define', 'jp2:prcheight=16383', '-define', 'jp2:cblkwidth=64',
-        '-define', 'jp2:cblkheight=64', '-define', 'jp2:sop', target['jp2_path']
-    ]
+def convert_target(tif, wm, target, jp2_countert):
+    # Preparing watermark
+    wm_resized = wm.resize(target['watermark_resize'], resample=1)
 
-    # ImageMagick command for watermarking
-    cmd_watermark_a = [
-        'convert', '-quiet', '-background', 'none', '-resize', target['watermark_min'],
-        'WM_20200311.png', 'WM_20200311_temp.png'
-    ]
-    cmd_watermark_b = [
-        'convert', '-quiet', target['jp2_path'], 'WM_20200311_temp.png', '-gravity', 'center',
-        '-composite', target['jp2_path']
-    ]
+    # Preparing tif
+    tif.seek(target['tif_scene_index'])
+    jp2 = tif
+    if target['tif_mode_convert'] is True:
+        jp2 = tif.convert('RGB')
+    if target['jp2_resize'] is not False:
+        jp2 = jp2.resize(target['jp2_resize'], resample=1)
+    jp2.paste(wm_resized, target['watermark_position'], wm_resized)
 
+    # Saving jp2
     try:
-        subprocess.call(cmd_jp2)
-        subprocess.call(cmd_watermark_a)
-        subprocess.call(cmd_watermark_b)
-    except:
-        logging.error('Converting failed, %s', target['tif_path'])
+        jp2.save(
+            target['jp2_path'], 'JPEG2000', tile_size=(1024, 1024), num_resolutions=7, codeblock_size=(64, 64),
+            precinct_size=(16383, 16383), quality_mode='dB', quality_layers=[46], irreversible=True, progression='RPCL')
+    except OSError:
+        logging.error('File cannot be saved, , $%s', os.path.join(target['jp2_path']))
         pass
+    except:
+        logging.error('Unknown error, , %s', os.path.join(target['jp2_path']))
+        pass
+    else:
+        jp2_counter = jp2_countert + 1
 
-
-def verify_jp2_counts(src_path, targets):
-    tif_count = len(targets)
-    jp2_count = 0
-    for dirpath, dirnames, files in os.walk(os.path.join(src_path, 'PUB')):
-        for file in files:
-            if file.endswith('.jp2'):
-                jp2_count = jp2_count + 1
-    logging.info('Found %s tif file(s) and %s jp2 file(s)', tif_count, jp2_count)
+        return jp2_counter
 
 
 def main():
     logger = logging.getLogger('')
     logger.setLevel(logging.DEBUG)
-    fh = logging.FileHandler('convert_error_log.csv')
+    fh = logging.FileHandler('convert_tif_to_jp2.log')
     fh.setLevel(logging.WARNING)
     ch = logging.StreamHandler()
     ch.setLevel(logging.INFO)
@@ -193,20 +238,10 @@ def main():
     logger.addHandler(ch)
 
     start_time = time.time()
-    targets = search_targets(args.input)
-
-    target_count = 1
-    for target in targets:
-        logging.info('Converting %s (%s/%s)', target['tif_name'], target_count,len(targets))
-        target = characterize_target(target)
-        if target['tif_convert'] is True:
-            convert_targets(target)
-        target_count = target_count + 1
-
-    verify_jp2_counts(args.input, targets)
+    search_and_convert_targets(args.path, args.type)
     end_time = time.time()
 
-    print([len(targets), round(end_time - start_time)])
+    logging.info('Conversion took %s second(s)', round(end_time - start_time))
     print('\a\a\a')
 
 
