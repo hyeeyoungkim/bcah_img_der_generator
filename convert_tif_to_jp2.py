@@ -4,6 +4,7 @@ import os
 import sys
 import time
 
+import pymsteams
 from PIL import Image, ImageSequence, UnidentifiedImageError
 
 parser = argparse.ArgumentParser(description='Convert tif to jp2 and add watermark')
@@ -241,8 +242,11 @@ def main():
     search_and_convert_targets(args.path, args.type)
     end_time = time.time()
 
-    logging.info('Conversion took %s second(s)', round(end_time - start_time))
-    print('\a\a\a')
+    logging.info('Conversion complete: %s second(s)', round(end_time - start_time))
+
+    # msg_to_teams_channel = pymsteams.connectorcard('')
+    # msg_to_teams_channel.text('Conversion complete: ' + args.path)
+    # msg_to_teams_channel.send()
 
 
 if __name__ == '__main__':
