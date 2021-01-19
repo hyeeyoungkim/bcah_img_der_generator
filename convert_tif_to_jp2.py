@@ -81,6 +81,7 @@ def search_and_convert_targets(src_path, src_type):
 
     for target in targets:
         try:
+            # https://pillow.readthedocs.io/en/stable/reference/Image.html#PIL.Image.open
             im = Image.open(target['tif_path'])
         except FileNotFoundError:
             logging.error('File not found, , %s', target['tif_path'])
@@ -128,6 +129,7 @@ def check_tif_dpi(im, target):
 
 
 def check_tif_scene(im, target):
+    # https://pillow.readthedocs.io/en/stable/reference/Image.html?highlight=n_frames#PIL.Image.Image.seek
     scene_count = im.n_frames
     if scene_count == 1:
         return 0
@@ -135,6 +137,7 @@ def check_tif_scene(im, target):
         scenes = {}
         scene_index = 0
         for scene in ImageSequence.Iterator(im):
+            # https://pillow.readthedocs.io/en/stable/reference/ImageSequence.html#imagesequence-module
             scene_size = sum(list(scene.size))
             scenes.update({scene_index: scene_size})
             scene_index += 1
@@ -208,6 +211,9 @@ def convert_target(tif, wm, target, jp2_countert):
     jp2.paste(wm_resized, target['watermark_position'], wm_resized)
 
     # Saving jp2
+    # https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html#jpeg-2000
+    # https://wiki.harvard.edu/confluence/display/DigitalImaging/Encoding+JPEG2000+images+using+the+Aware+codec
+    # https://www.dpconline.org/docs/miscellaneous/events/161-using-psnr-thresholds-to-modulate-the-degree-of-lossy-compression-in-jpeg2000-files-comstock/file
     try:
         jp2.save(
             target['jp2_path'], 'JPEG2000', tile_size=(1024, 1024), num_resolutions=7, codeblock_size=(64, 64),
