@@ -120,12 +120,18 @@ def search_and_convert_targets(src_path, src_type):
 
 
 def check_tif_dpi(im, target):
-    dpi = im.info['dpi']
-    if dpi[0] == dpi[1]:
-        return float(dpi[0])
-    else:
-        logging.warning('Irregular dpi tif, %sx%s dpi, %s', dpi[0], dpi[1], target['tif_path'])
+    try:
+        print(im.info)
+        dpi = im.info['dpi']
+    except KeyError:
+        logging.warning('No dpi information tif, , %s', target['tif_path'])
         return False
+    else:
+        if dpi[0] == dpi[1]:
+            return float(dpi[0])
+        else:
+            logging.warning('Irregular dpi tif, %sx%s dpi, %s', dpi[0], dpi[1], target['tif_path'])
+            return False
 
 
 def check_tif_scene(im, target):
