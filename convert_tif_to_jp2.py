@@ -1,4 +1,5 @@
 import argparse
+import csv
 import logging
 import os
 import sys
@@ -8,34 +9,53 @@ import pymsteams
 from PIL import Image, ImageSequence, UnidentifiedImageError
 
 parser = argparse.ArgumentParser(description='Convert tif to jp2 and add watermark')
-parser.add_argument('path', help='Path to collection directory')
+parser.add_argument('path', help='Path to directory or file')
 parser.add_argument('-t', '--type', choices=['pub', 'arch', 'any', 'csv'], required=True, help='Type')
 args = parser.parse_args()
 
 
-def search_and_convert_targets(src_path, src_type):
-    targets = []
+def validating_inputs(src_path, src_type):
+    dir_target_paths = []
+    file_target_paths = []
 
-    # Validating directory path
+    # Validating input
     if src_type == 'pub':
         if not os.path.exists(os.path.join(src_path, 'PUB')):
             logging.error('Directory not found, , %s', os.path.join(src_path, 'PUB'))
             sys.exit()
         else:
-            target_path = os.path.join(src_path, 'PUB')
+            dir_target_paths.append(os.path.join(src_path, 'PUB'))
     elif src_type == 'arch':
         if not os.path.exists(os.path.join(src_path, 'ARCH')):
             logging.error('Directory not found, , %s', os.path.join(src_path, 'ARCH'))
             sys.exit()
         else:
-            target_path = os.path.join(src_path, 'ARCH')
+            dir_target_paths.append(os.path.join(src_path, 'ARCH'))
     elif src_type == 'any':
         if not os.path.exists(os.path.join(src_path)):
-            logging.error('Directory not found, ,%s', os.path.join(src_path))
+            logging.error('Directory not found, , %s', os.path.join(src_path))
             sys.exit()
         else:
-            target_path = os.path.join(src_path)
-    else: # src_type == 'csv'
+            dir_target_paths.append(os.path.join(src_path))
+    elif src_type == 'csv':
+        if not os.path.exists(os.path.join(src_path)):
+            logging.error('File not found, , %s', src_path)
+            sys.exit()
+        else:
+            with open(os.path.join(src_path), mode='r') as csv_file:
+                csv_reader = csv.DictReader(csv_file)
+                csv_reader.fieldnames = [fieldname.strip().lower() for fieldname in csv_reader.fieldnames]
+                for row in csv_reader:
+                    if os.path.exists(os.path.join(row['path'])):
+                        if os.path.isdir(os.path.join(row['path'])):
+                            dir_target_paths.append(row['path'])
+                        else:
+                            file_target_paths.append(row['path'])
+                    else:
+                        logging.error('Path not found, , %s', row['path'])
+            logging.info('Found %s folder(s) and %s files(s) from %s', len(dir_target_paths), len(file_target_paths),
+                         src_path)
+    else:
         sys.exit()
 
     # Validating watermark
@@ -45,12 +65,19 @@ def search_and_convert_targets(src_path, src_type):
     else:
         try:
             wm = Image.open('WM_20200311.png')
+            wm.close()
         except UnidentifiedImageError:
             logging.error('Watermark cannot be opened, , %s', os.path.join(src_path))
             sys.exit()
 
-    # Parsing tif file paths:
-    if src_type != 'csv':
+    return dir_target_paths, file_target_paths
+
+
+def parsing_targets(dir_target_paths, file_target_paths):
+    targets = []
+
+    # Parsing tif file folder paths:
+    for target_path in dir_target_paths:
         for root, dirs, files in os.walk(os.path.join(target_path)):
             for file in files:
                 if not file.startswith('._') and file.lower().endswith(('.tiff', '.tif')):
@@ -68,16 +95,42 @@ def search_and_convert_targets(src_path, src_type):
                         # 'watermark_position': ''
                     }
                     targets.append(target)
-    else: # src_type == 'csv'
-        sys.exit()
 
-    logging.info('Found %s tif file(s) in %s', len(targets), target_path)
+    # Parsing tif file file paths:
+    for target_path in file_target_paths:
+        root, file = os.path.split(os.path.join(target_path))
+        if not file.startswith('._') and file.lower().endswith(('.tiff', '.tif')):
+            target = {
+                'tif_name': file,
+                'tif_path': os.path.join(root, file),
+                'jp2_path': os.path.join(root, os.path.splitext(file)[0].replace('_pub', '') + '.jp2')
+                # 'tif_width': '',
+                # 'tif_height': '',
+                # 'tif_mode': '',
+                # 'tif_dpi': '',
+                # 'tif_scene_index': '',
+                # 'jp2_resize': '',
+                # 'watermark_resize': '',
+                # 'watermark_position': ''
+            }
+            targets.append(target)
+
+    # Removing duplicate tif file paths
+    # https://stackoverflow.com/questions/9427163/remove-duplicate-dict-in-list-in-python
+    targets = [dict(t) for t in {tuple(d.items()) for d in targets}]
+
+    logging.info('Found %s tif file(s)', len(targets))
     print()
 
-    # Characterizing tif files
+    return targets
+
+
+def characterize_and_convert_targets(targets):
     tif_total = len(targets)
     tif_counter = 1
     jp2_counter = 0
+
+    wm = Image.open('WM_20200311.png')
 
     for target in targets:
         try:
@@ -114,14 +167,12 @@ def search_and_convert_targets(src_path, src_type):
                 jp2_counter = convert_target(im, wm, target, jp2_counter)
                 tif_counter = tif_counter + 1
                 im.close()
-
     print()
-    logging.info('Converted %s jp2 file(s) from %s tif file(s) in %s', jp2_counter, tif_total, target_path)
+    logging.info('Converted %s jp2 file(s) from %s tif file(s)', jp2_counter, tif_total)
 
 
 def check_tif_dpi(im, target):
     try:
-        print(im.info)
         dpi = im.info['dpi']
     except KeyError:
         logging.warning('No dpi information tif, , %s', target['tif_path'])
@@ -203,7 +254,7 @@ def calculate_jp2_watermark(target):
     return jp2_resize, watermark_resize, watermark_position
 
 
-def convert_target(tif, wm, target, jp2_countert):
+def convert_target(tif, wm, target, jp2_counter):
     # Preparing watermark
     wm_resized = wm.resize(target['watermark_resize'], resample=1)
 
@@ -231,7 +282,7 @@ def convert_target(tif, wm, target, jp2_countert):
         logging.error('Unknown error, , %s', os.path.join(target['jp2_path']))
         pass
     else:
-        jp2_counter = jp2_countert + 1
+        jp2_counter = jp2_counter + 1
 
         return jp2_counter
 
@@ -251,7 +302,9 @@ def main():
     logger.addHandler(ch)
 
     start_time = time.time()
-    search_and_convert_targets(args.path, args.type)
+    dir_target_paths, file_target_paths = validating_inputs(args.path, args.type)
+    targets = parsing_targets(dir_target_paths, file_target_paths)
+    characterize_and_convert_targets(targets)
     end_time = time.time()
 
     logging.info('Conversion complete: %s second(s)', round(end_time - start_time))
