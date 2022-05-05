@@ -6,7 +6,9 @@ import sys
 import time
 
 import pymsteams
-from PIL import Image, ImageSequence, UnidentifiedImageError
+from PIL import Image, ImageOps, ImageSequence, UnidentifiedImageError
+
+Image.MAX_IMAGE_PIXELS = None
 
 parser = argparse.ArgumentParser(description='Convert tif to jp2 and add watermark')
 parser.add_argument('path', help='Path to directory or file')
@@ -104,6 +106,7 @@ def parsing_targets(dir_target_paths, file_target_paths):
                 'tif_name': file,
                 'tif_path': os.path.join(root, file),
                 'jp2_path': os.path.join(root, os.path.splitext(file)[0].replace('_pub', '') + '.jp2')
+                # 'tif_orientation': '',
                 # 'tif_width': '',
                 # 'tif_height': '',
                 # 'tif_mode': '',
@@ -146,9 +149,20 @@ def characterize_and_convert_targets(targets):
             logging.error('Unknown error, , %s', target['tif_path'])
             pass
         else:
+            target.update({'tif_orientation': check_tif_orientation(im, target)})
+
+            if target['tif_orientation'] in ['5', '6', '7', '8']:
+                target.update({
+                    'tif_width': float(im.height),
+                    'tif_height': float(im.width)
+                })
+            else:
+                target.update({
+                    'tif_width': float(im.width),
+                    'tif_height': float(im.height)
+                })
+
             target.update({
-                'tif_width': float(im.width),
-                'tif_height': float(im.height),
                 'tif_dpi': check_tif_dpi(im, target),
                 'tif_scene_index': check_tif_scene(im, target)
             })
@@ -169,6 +183,19 @@ def characterize_and_convert_targets(targets):
                 im.close()
     print()
     logging.info('Converted %s jp2 file(s) from %s tif file(s)', jp2_counter, tif_total)
+
+
+def check_tif_orientation(im, target):
+    # https://stackoverflow.com/a/48691518
+    try:
+        exif = im.getexif()
+        orientation = str(exif[274])
+        if orientation != '1':
+            logging.warning('Rotated tif, %s, %s', orientation, target['tif_path'])
+    except:
+        orientation = None
+
+    return orientation
 
 
 def check_tif_dpi(im, target):
@@ -262,9 +289,13 @@ def convert_target(tif, wm, target, jp2_counter):
     tif.seek(target['tif_scene_index'])
     jp2 = tif
     if target['tif_mode_convert'] is True:
-        jp2 = tif.convert('RGB')
+        # https://stackoverflow.com/posts/7248480/
+        if tif.mode in ['I;16', 'I;16S']:
+            jp2 = tif.point(lambda i:i*(1./256)).convert('RGB')
+        else:
+            jp2 = tif.convert('RGB')
     if target['jp2_resize'] is not False:
-        jp2 = jp2.resize(target['jp2_resize'], resample=1)
+        jp2 = jp2.resize(target['jp2_resize'], resample=1, box=(0, 0, target['tif_width'], target['tif_height']))
     jp2.paste(wm_resized, target['watermark_position'], wm_resized)
 
     # Saving jp2
@@ -284,7 +315,7 @@ def convert_target(tif, wm, target, jp2_counter):
     else:
         jp2_counter = jp2_counter + 1
 
-        return jp2_counter
+    return jp2_counter
 
 
 def main():
@@ -309,9 +340,9 @@ def main():
 
     logging.info('Conversion complete: %s second(s)', round(end_time - start_time))
 
-    # msg_to_teams_channel = pymsteams.connectorcard('')
-    # msg_to_teams_channel.text('Conversion complete: ' + args.path)
-    # msg_to_teams_channel.send()
+   # msg_to_teams_channel = pymsteams.connectorcard('')
+   # msg_to_teams_channel.text('Conversion complete: ' + args.path)
+   # msg_to_teams_channel.send()
 
 
 if __name__ == '__main__':
