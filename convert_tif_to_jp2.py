@@ -61,12 +61,12 @@ def validating_inputs(src_path, src_type):
         sys.exit()
 
     # Validating watermark
-    if not os.path.exists(os.path.join('WM_20200311.png')):
-        logging.error('Watermark not found, , %s', os.path.join('WM_20200311.png'))
+    if not os.path.exists(os.path.join('watermark.png')):
+        logging.error('Watermark not found, , %s', os.path.join('watermark.png'))
         sys.exit()
     else:
         try:
-            wm = Image.open('WM_20200311.png')
+            wm = Image.open('watermark.png')
             wm.close()
         except UnidentifiedImageError:
             logging.error('Watermark cannot be opened, , %s', os.path.join(src_path))
@@ -133,7 +133,7 @@ def characterize_and_convert_targets(targets):
     tif_counter = 1
     jp2_counter = 0
 
-    wm = Image.open('WM_20200311.png')
+    wm = Image.open('watermark.png')
 
     for target in targets:
         try:
@@ -340,9 +340,9 @@ def main():
 
     logging.info('Conversion complete: %s second(s)', round(end_time - start_time))
 
-   # msg_to_teams_channel = pymsteams.connectorcard('')
-   # msg_to_teams_channel.text('Conversion complete: ' + args.path)
-   # msg_to_teams_channel.send()
+    # msg_to_teams_channel = pymsteams.connectorcard('')
+    # msg_to_teams_channel.text('Conversion complete: ' + args.path)
+    # msg_to_teams_channel.send()
 
 
 if __name__ == '__main__':
